@@ -39,21 +39,6 @@ pub async fn register_begin(Json(payload): Json<serde_json::Value>) -> axum::res
     let reset_mode = payload.get("reset_mode").and_then(|v| v.as_bool()).unwrap_or(false);
 
     // TODO
-    if !reset_mode && user::exists(email).unwrap() {
-        return Err((StatusCode::BAD_REQUEST, "Email already exists").into());
-    }
-
-    let (registration_state, challenge) =
-        begin_registration(email, "WebAuthn User");
-
-    let state_id = uuid::Uuid::new_v4().to_string();
-    REGISTRATION_STATES
-        .write()
-        .await
-        .insert(state_id.clone(), StoredRegistrationState {
-        registration_state,
-        challenge,
-    });
 
 
 

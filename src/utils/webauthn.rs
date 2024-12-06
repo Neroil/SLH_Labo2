@@ -35,26 +35,32 @@ pub async fn begin_registration(
     user_email: &str,
     user_display_name: &str,
 ) -> Result<(serde_json::Value, PasskeyRegistration)> {
-    let user_id = todo!();
+    let user_id = Uuid::new_v4();
+    
+    let (ccr,reg_state) = WEBAUTHN.start_passkey_registration(
+        user_id,
+        user_email,
+        user_display_name,
+        None,
+    ).expect("Failed to start registration.");
 
-
-    // TODO
+    let public_key = ccr.public_key;
 
     Ok((
         serde_json::json!({
-            "rp": todo!(),
+            "rp": public_key.rp,
             "user": {
-                "id": todo!(),
-                "name": todo!(),
-                "displayName": todo!(),
+                "id": user_id.to_string(),
+                "name": user_display_name,
+                "displayName": user_display_name,
             },
-            "challenge": todo!(),
-            "pubKeyCredParams": todo!(),
-            "timeout": todo!(),
-            "authenticatorSelection": todo!(),
-            "attestation": todo!(),
+            "challenge": public_key.challenge,
+            "pubKeyCredParams": public_key,
+            "timeout": public_key.timeout,
+            "authenticatorSelection": public_key.authenticator_selection,
+            "attestation": public_key.attestation,
         }),
-        todo!(),
+        reg_state,
     ))
 }
 
@@ -66,6 +72,13 @@ pub async fn complete_registration(
 ) -> Result<()> {
 
     // TODO
+    let passkey = WEBAUTHN.finish_passkey_registration(
+        response,
+        &stored_state.registration_state,
+    ).context("Failed to finish registration")?;
+
+    let mut store = CREDENTIAL_STORE.write().await;
+    store.insert(user_email.to_string(), passkey);
 
     Ok(())
 }
@@ -73,16 +86,25 @@ pub async fn complete_registration(
 /// Démarrer l'authentification WebAuthn
 pub async fn begin_authentication(user_email: &str) -> Result<(serde_json::Value, PasskeyAuthentication)> {
 
+    let store = CREDENTIAL_STORE.read().await;
+    let passkey = store.get(user_email).context("User not found")?;
+
+
     // TODO
+    let (rcr,passkey_auth) = WEBAUTHN.start_passkey_authentication(
+        std::slice::from_ref(passkey)
+    ).context("Failed to start authentication")?;
+
+    let public_key = rcr.public_key;
 
     Ok((
         serde_json::json!({
-            "challenge": todo!(),
-            "timeout": todo!(),
-            "rpId": todo!(),
-            "allowCredentials": todo!(),
+            "challenge": public_key.challenge,
+            "timeout": public_key.timeout,
+            "rpId": public_key.rp_id,
+            "allowCredentials": public_key.allow_credentials,
          }),
-        todo!(),
+        passkey_auth,
     ))
 }
 
@@ -100,6 +122,12 @@ pub async fn complete_authentication(
         .context("Failed to parse client_data_json")?;
 
     // TODO
+    WEBAUTHN.finish_passkey_authentication(
+        response,
+        state,
+        server_challenge,
+        &client_data,
+    ).context("Failed to finish authentication")?;
 
     Ok(())
 }
