@@ -3,12 +3,11 @@
 //! la récupération de compte et la validation d'utilisateur.
 
 use axum::{
-    extract::{Path, Json, Query},
-    response::{Redirect, IntoResponse, Html},
-    http::StatusCode,
+    extract::{Json, Path, Query}, http::StatusCode, response::{ErrorResponse, Html, IntoResponse, Redirect}
 };
 
 use once_cell::sync::Lazy;
+use crate::email::{self, send_mail};
 use serde_json::json;
 use std::collections::HashMap;
 use tokio::sync::RwLock;
@@ -38,14 +37,30 @@ pub async fn register_begin(Json(payload): Json<serde_json::Value>) -> axum::res
 
     let reset_mode = payload.get("reset_mode").and_then(|v| v.as_bool()).unwrap_or(false);
 
+
     // TODO
+    // Vérifier si l'utilisateur existe déjà (sauf en mode reset)
+    if !reset_mode {
+        if user::exists(email).unwrap_or(false) {
+           return Err(ErrorResponse::from("User already exists"));
+        }
+    }
+    
+    let (public_key, reg_state) = begin_registration(email, email)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
+    let state_id = uuid::Uuid::new_v4().to_string();
 
-
+    let mut states = REGISTRATION_STATES.write().await;
+    states.insert(state_id.clone(), StoredRegistrationState {
+        registration_state: reg_state,
+        challenge: public_key["challenge"].as_str().unwrap().to_string(),
+    });
 
     Ok(Json(json!({
-        "publicKey": todo!(),
-        "state_id": todo!(),
+        "publicKey": public_key,
+        "state_id": state_id,
     })))
 }
 
@@ -70,7 +85,53 @@ pub async fn register_complete(Json(payload): Json<serde_json::Value>) -> axum::
 
     // TODO
 
-    Ok(todo!())
+    // 1. Récupérer l'état d'enregistrement
+    let state_id = payload.get("state_id")
+        .and_then(|v| v.as_str())
+        .ok_or((StatusCode::BAD_REQUEST, "State ID is required"))?;
+
+    let mut states = REGISTRATION_STATES.write().await;
+    let stored_state = states.remove(state_id)
+        .ok_or((StatusCode::BAD_REQUEST, "Invalid state"))?;
+
+    // 2. Convertir la réponse en RegisterPublicKeyCredential
+    let response: RegisterPublicKeyCredential = serde_json::from_value(
+        payload
+            .get("response")
+            .ok_or_else(|| {
+                (
+                    StatusCode::BAD_REQUEST,
+                    "Response is required".to_string(),
+                )
+            })?
+            .clone(),
+    ).map_err(|err| {
+        (
+            StatusCode::BAD_REQUEST,
+            format!("Invalid response format: {}", err),
+        )
+    })?;
+
+    // 3. Compléter l'enregistrement
+    complete_registration(email, &response, &stored_state).await.map_err(|err| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("Failed to complete registration: {}", err),
+        )
+    })?;
+
+    // 4. Créer ou mettre à jour l'utilisateur en base de données
+    user::create(email, first_name, last_name).map_err(|err| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("Failed to create user: {}", err),
+        )
+    })?;
+
+    // Envoyer email de validation si nécessaire
+    
+
+    Ok(StatusCode::OK)
 }
 
 /// Début du processus d'authentification WebAuthn
@@ -81,10 +142,29 @@ pub async fn login_begin(Json(payload): Json<serde_json::Value>) -> axum::respon
         .ok_or((StatusCode::BAD_REQUEST, "Email is required"))?;
 
     // TODO
+    
+    // Vérifier si l'utilisateur existe
+    if !user::exists(email).unwrap_or(false) {
+        return Err(ErrorResponse::from("User not found"));
+    }
+
+    // Débuter l'authentification
+    let (public_key, auth_state) = begin_authentication(email)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    let state_id = uuid::Uuid::new_v4().to_string();
+
+    // Stocker l'état d'authentification
+    let mut states = AUTHENTICATION_STATES.write().await;
+    states.insert(state_id.clone(), TimedStoredState {
+        state: auth_state,
+        server_challenge: public_key["challenge"].as_str().unwrap().to_string(),
+    });
 
     Ok(Json(json!({
-        "publicKey": todo!(),
-        "state_id": todo!(),
+        "publicKey": public_key,
+        "state_id": state_id,
     })))
 }
 
@@ -94,6 +174,22 @@ pub async fn login_complete(Json(payload): Json<serde_json::Value>) -> axum::res
     let state_id = payload.get("state_id").and_then(|v| v.as_str()).ok_or_else(|| (StatusCode::BAD_REQUEST, "State ID is required"))?;
 
     // TODO
+    // Récupérer l'état d'authentification
+    let mut states = AUTHENTICATION_STATES.write().await;
+    let stored_state = states.remove(state_id)
+        .ok_or((StatusCode::BAD_REQUEST, "Invalid state"))?;
+
+    // Convertir la réponse
+    let credential: PublicKeyCredential = serde_json::from_value(response.clone())
+        .map_err(|_| (StatusCode::BAD_REQUEST, "Invalid response format"))?;
+
+    // Compléter l'authentification
+    complete_authentication(&credential, &stored_state.state, &stored_state.server_challenge)
+        .await
+        .map_err(|e| (StatusCode::UNAUTHORIZED, e.to_string()))?;
+
+    // TODO: Créer une session pour l'utilisateur authentifié
+    // session.insert("email", email).await?;
 
     Ok(Redirect::to("/home"))
 }
@@ -119,6 +215,27 @@ pub async fn recover_account(Json(payload): Json<serde_json::Value>) -> axum::re
     let mut data = HashMap::new();
 
     // TODO : Utilisez la fonction send_email
+    let email = payload
+        .get("email")
+        .and_then(|v| v.as_str())
+        .ok_or((StatusCode::BAD_REQUEST, "Email is required"))?;
+
+    // Vérifier si l'utilisateur existe
+    if !user::exists(email).unwrap_or(false) {
+        return Err(ErrorResponse::from("User not found"));
+    }
+
+    // Générer un token de récupération
+    let recovery_token = token::generate(email).map_err(|_| {
+        (StatusCode::INTERNAL_SERVER_ERROR, "Failed to create recovery token")
+    })?;
+
+    // Envoyer l'email de récupération
+    // TODO: Implémenter l'envoi d'email avec le lien de récupération
+    email::send_mail(email, "Account Recovery", &format!("Click here to recover your account: http://localhost:3000/reset/{}", recovery_token))
+        .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Failed to send recovery email"))?;
+
+    data.insert("message", "Recovery email sent. Please check your inbox.");
 
     HBS.render("recover", &data)
         .map(Html)

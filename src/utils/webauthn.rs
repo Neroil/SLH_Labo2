@@ -50,7 +50,7 @@ pub async fn begin_registration(
         serde_json::json!({
             "rp": public_key.rp,
             "user": {
-                "id": user_id.to_string(),
+                "id": user_id,
                 "name": user_display_name,
                 "displayName": user_display_name,
             },
@@ -122,11 +122,20 @@ pub async fn complete_authentication(
         .context("Failed to parse client_data_json")?;
 
     // TODO
+
+    // Vérification du challenge
+    let challenge = client_data.get("challenge")
+        .and_then(|c| c.as_str())
+        .context("Missing challenge")?;
+
+    if challenge != server_challenge {
+        return Err(anyhow::anyhow!("Invalid challenge"));
+    }
+
+
     WEBAUTHN.finish_passkey_authentication(
         response,
-        state,
-        server_challenge,
-        &client_data,
+        state
     ).context("Failed to finish authentication")?;
 
     Ok(())
