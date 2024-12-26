@@ -1,0 +1,12 @@
+next_pk: 2
+emails:
+  1:
+    pk: 1
+    to: svenHeinerrrr@dickeSchwanz.de
+    subject: Account Validation
+    body: 'Welcome! Please click the following link to validate your account: http://localhost:3000/validate/c2130464-271e-48f7-8902-7eca02be1a75'
+  0:
+    pk: 0
+    to: abc@gmail.com
+    subject: Account Recovery
+    body: 'Click here to recover your account: http://localhost:3000/reset/57e4a343-21bf-4939-9b20-224ea9cb54f5'

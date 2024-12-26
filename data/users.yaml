@@ -1,3 +1,58 @@
+ed@caca.ch:
+  first_name: aya
+  last_name: moo
+  email: ed@caca.ch
+  passkey: null
+  verified: false
+  stash: []
+  liked_posts: []
+abc@gmail.com:
+  first_name: omg
+  last_name: mince
+  email: abc@gmail.com
+  passkey: null
+  verified: false
+  stash: []
+  liked_posts: []
+svenHeinerrrr@dickeSchwanz.de:
+  first_name: Sven
+  last_name: Heine
+  email: svenHeinerrrr@dickeSchwanz.de
+  passkey:
+    cred:
+      cred_id: xcGMcDY3TA6-pG7J4klXEg
+      cred:
+        type_: ES256
+        key: !EC_EC2
+          curve: SECP256R1
+          x: Dmtlz7pRB0M-Cx0ZxdNYcKoYcPGEXHqpNUkylmHUtCw
+          y: 2XbxXTnZas6Z2eL5NhF8tq0ZBokvarfTUXlyhW4Amv4
+      counter: 0
+      transports: null
+      user_verified: true
+      backup_eligible: true
+      backup_state: true
+      registration_policy: required
+      extensions:
+        cred_protect: Ignored
+        hmac_create_secret: NotRequested
+        appid: NotRequested
+        cred_props: Ignored
+      attestation:
+        data: None
+        metadata: None
+      attestation_format: none
+  verified: false
+  stash: []
+  liked_posts: []
+wehqohei@outlook.com:
+  first_name: babe
+  last_name: abdel
+  email: wehqohei@outlook.com
+  passkey: null
+  verified: false
+  stash: []
+  liked_posts: []
 wehqohei@oukktlook.com:
   first_name: wreerw
   last_name: ewrwer
@@ -10,30 +65,6 @@ ed@hotmail.com:
   first_name: eeee
   last_name: eeee
   email: ed@hotmail.com
-  passkey: null
-  verified: false
-  stash: []
-  liked_posts: []
-ed@caca.ch:
-  first_name: aya
-  last_name: moo
-  email: ed@caca.ch
-  passkey: null
-  verified: false
-  stash: []
-  liked_posts: []
-wehqohei@outlook.com:
-  first_name: babe
-  last_name: abdel
-  email: wehqohei@outlook.com
-  passkey: null
-  verified: false
-  stash: []
-  liked_posts: []
-abc@gmail.com:
-  first_name: omg
-  last_name: mince
-  email: abc@gmail.com
   passkey: null
   verified: false
   stash: []
