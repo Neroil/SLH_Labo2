@@ -97,73 +97,82 @@ pub async fn register_begin(Json(payload): Json<serde_json::Value>) -> axum::res
 
 /// Fin du processus d'enregistrement WebAuthn
 pub async fn register_complete(Json(payload): Json<serde_json::Value>) -> axum::response::Result<StatusCode> {
+// Extraire et valider l'email
+let email = payload
+.get("email")
+.and_then(|v| v.as_str())
+.ok_or((StatusCode::BAD_REQUEST, "Email is required"))?;
 
-    let email = payload
-        .get("email")
-        .and_then(|v| v.as_str())
-        .ok_or((StatusCode::BAD_REQUEST, "Email is required"))?;
+let validated_email = EmailInput::new(email)
+.ok_or((StatusCode::BAD_REQUEST, "Email is Invalid!"))?;
 
-    //Validate the email 
-    let validated_email =  EmailInput::new(email).ok_or((StatusCode::BAD_REQUEST, "Email is Invalid !"))?;
+// Extraire les autres champs requis
+let first_name = payload
+.get("first_name")
+.and_then(|v| v.as_str())
+.ok_or((StatusCode::BAD_REQUEST, "First name is required"))?;
 
-    let first_name = payload
-        .get("first_name")
-        .and_then(|v| v.as_str())
-        .ok_or((StatusCode::BAD_REQUEST, "First name is required"))?;
-    let last_name = payload
-        .get("last_name")
-        .and_then(|v| v.as_str())
-        .ok_or((StatusCode::BAD_REQUEST, "Last name is required"))?;
+let last_name = payload
+.get("last_name")
+.and_then(|v| v.as_str())
+.ok_or((StatusCode::BAD_REQUEST, "Last name is required"))?;
 
-    // TODO
+// Récupérer l'état d'enregistrement
+let state_id = payload
+.get("state_id")
+.and_then(|v| v.as_str())
+.ok_or((StatusCode::BAD_REQUEST, "State ID is required"))?;
 
-    // 1. Récupérer l'état d'enregistrement
-    let state_id = payload.get("state_id")
-        .and_then(|v| v.as_str())
-        .ok_or((StatusCode::BAD_REQUEST, "State ID is required"))?;
+let mut states = REGISTRATION_STATES.write().await;
+let stored_state = states
+.remove(state_id)
+.ok_or((StatusCode::BAD_REQUEST, "Invalid state"))?;
 
-    let mut states = REGISTRATION_STATES.write().await;
-    let stored_state = states.remove(state_id)
-        .ok_or((StatusCode::BAD_REQUEST, "Invalid state"))?;
+// Convertir et valider la réponse WebAuthn
+let response: RegisterPublicKeyCredential = serde_json::from_value(
+payload
+    .get("response")
+    .ok_or((StatusCode::BAD_REQUEST, "Response is required"))?
+    .clone(),
+).map_err(|err| (StatusCode::BAD_REQUEST, format!("Invalid response format: {}", err)))?;
 
-    // 2. Convertir la réponse en RegisterPublicKeyCredential
-    let response: RegisterPublicKeyCredential = serde_json::from_value(
-        payload
-            .get("response")
-            .ok_or_else(|| {
-                (
-                    StatusCode::BAD_REQUEST,
-                    "Response is required".to_string(),
-                )
-            })?
-            .clone(),
-    ).map_err(|err| {
-        (
-            StatusCode::BAD_REQUEST,
-            format!("Invalid response format: {}", err),
-        )
-    })?;
+// Compléter l'enregistrement WebAuthn
+complete_registration(email, &response, &stored_state)
+.await
+.map_err(|err| (StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to complete registration: {}", err)))?;
 
-    // 3. Compléter l'enregistrement
-    complete_registration(email, &response, &stored_state).await.map_err(|err| {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            format!("Failed to complete registration: {}", err),
-        )
-    })?;
+// Récupérer la passkey générée
+let passkey = CREDENTIAL_STORE
+.read()
+.await
+.get(email)
+.ok_or((StatusCode::INTERNAL_SERVER_ERROR, "Passkey not found"))?
+.clone();
 
-    // 4. Créer ou mettre à jour l'utilisateur en base de données
-    user::create(email, first_name, last_name).map_err(|err| {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            format!("Failed to create user: {}", err),
-        )
-    })?;
+// Créer l'utilisateur en base de données
+user::create(email, first_name, last_name)
+.map_err(|err| (StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to create user: {}", err)))?;
 
-    // Envoyer email de validation si nécessaire
-    
+// Associer la passkey à l'utilisateur
+user::set_passkey(email, passkey)
+.map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Failed to set passkey"))?;
 
-    Ok(StatusCode::OK)
+// Générer et envoyer le token de validation par email
+let validation_token = token::generate(email)
+.map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Failed to generate validation token"))?;
+
+// Construire le message de validation
+let validation_url = format!("http://localhost:3000/validate/{}", validation_token);
+let email_body = format!(
+"Welcome! Please click the following link to validate your account: {}",
+validation_url
+);
+
+// Envoyer l'email de validation
+send_mail(email, "Account Validation", &email_body)
+.map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Failed to send validation email"))?;
+
+Ok(StatusCode::OK)
 }
 
 /// Début du processus d'authentification WebAuthn
@@ -258,6 +267,7 @@ pub async fn logout(
 
 /// Valide un compte utilisateur via un token
 pub async fn validate_account(Path(token): Path<String>) -> impl IntoResponse {
+
     match token::consume(&token) {
         Ok(email) => match user::verify(&email) {
             Ok(_) => Redirect::to("/login?validated=true"),
@@ -271,6 +281,7 @@ pub async fn validate_account(Path(token): Path<String>) -> impl IntoResponse {
 pub async fn recover_account(Json(payload): Json<serde_json::Value>) -> axum::response::Result<Html<String>> {
     let mut data = HashMap::new();
 
+    //TODO FIX THIS OMG
     // TODO : Utilisez la fonction send_email
     let email = payload
         .get("email")
