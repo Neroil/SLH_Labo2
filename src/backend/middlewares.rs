@@ -17,7 +17,7 @@ where
 
     async fn from_request_parts(parts: &mut Parts, _: &S) -> Result<Self, Self::Rejection> {
         if let Some(session) = parts.extensions.get::<Session>() {
-            if session.get::<String>("email").is_ok() {
+            if session.get::<bool>("isAuthenticated").unwrap_or_default().is_some() {
                 return Ok(SessionUser);
             }
         }

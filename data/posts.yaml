@@ -1,1 +1,12 @@
-[]
+- id: c3765ca9-8fce-4f2e-be76-f7c626aec5a2
+  content: salut
+  image_path: null
+  likes: 0
+- id: 682753fb-5392-44d6-8505-b6a1d3089f01
+  content: merde putain
+  image_path: ./data/uploads/output.pdf
+  likes: 0
+- id: 5bc31e97-af70-4a13-9b44-3313c0f903ad
+  content: omggg
+  image_path: null
+  likes: 0

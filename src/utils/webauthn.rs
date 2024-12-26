@@ -55,7 +55,7 @@ pub async fn begin_registration(
                 "displayName": user_display_name,
             },
             "challenge": public_key.challenge,
-            "pubKeyCredParams": public_key,
+            "pubKeyCredParams": public_key.pub_key_cred_params,
             "timeout": public_key.timeout,
             "authenticatorSelection": public_key.authenticator_selection,
             "attestation": public_key.attestation,

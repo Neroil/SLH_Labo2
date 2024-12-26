@@ -7,14 +7,39 @@ use axum::{
 };
 
 use once_cell::sync::Lazy;
+use tower_sessions::Session;
 use crate::email::{self, send_mail};
 use serde_json::json;
 use std::collections::HashMap;
 use tokio::sync::RwLock;
+use validator::{Validate, ValidationError};
 use webauthn_rs::prelude::{PasskeyAuthentication, PublicKeyCredential, RegisterPublicKeyCredential};
 use crate::HBS;
 use crate::database::{user, token};
 use crate::utils::webauthn::{begin_registration, complete_registration, begin_authentication, complete_authentication, StoredRegistrationState, CREDENTIAL_STORE};
+
+
+//Validation des emails 
+
+#[derive(Debug, Validate)]
+struct EmailInput {
+    #[validate(email)]
+    email: String,
+}
+
+impl EmailInput {
+    pub fn new(email: &str) -> Option<Self> {
+        let instance = EmailInput {
+            email: email.to_string(),
+        };
+        if instance.validate().is_ok() {
+            Some(instance)
+        } else {
+            None
+        }
+    }
+}
+
 
 /// Structure pour gérer un état temporaire avec un challenge
 struct TimedStoredState<T> {
@@ -38,20 +63,26 @@ pub async fn register_begin(Json(payload): Json<serde_json::Value>) -> axum::res
     let reset_mode = payload.get("reset_mode").and_then(|v| v.as_bool()).unwrap_or(false);
 
 
+    //Validate the email 
+    let validated_email =  EmailInput::new(email).ok_or((StatusCode::BAD_REQUEST, "Email is Invalid !"))?;
+
     // TODO
     // Vérifier si l'utilisateur existe déjà (sauf en mode reset)
     if !reset_mode {
-        if user::exists(email).unwrap_or(false) {
+        if user::exists(&validated_email.email).unwrap_or(false) {
            return Err(ErrorResponse::from("User already exists"));
         }
     }
     
+    //Begin registration
     let (public_key, reg_state) = begin_registration(email, email)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
+    //Unique ID for this registration
     let state_id = uuid::Uuid::new_v4().to_string();
 
+    //Write to the DB
     let mut states = REGISTRATION_STATES.write().await;
     states.insert(state_id.clone(), StoredRegistrationState {
         registration_state: reg_state,
@@ -72,7 +103,8 @@ pub async fn register_complete(Json(payload): Json<serde_json::Value>) -> axum::
         .and_then(|v| v.as_str())
         .ok_or((StatusCode::BAD_REQUEST, "Email is required"))?;
 
-    let reset_mode = payload.get("reset_mode").and_then(|v| v.as_bool()).unwrap_or(false);
+    //Validate the email 
+    let validated_email =  EmailInput::new(email).ok_or((StatusCode::BAD_REQUEST, "Email is Invalid !"))?;
 
     let first_name = payload
         .get("first_name")
@@ -141,27 +173,31 @@ pub async fn login_begin(Json(payload): Json<serde_json::Value>) -> axum::respon
         .and_then(|v| v.as_str())
         .ok_or((StatusCode::BAD_REQUEST, "Email is required"))?;
 
-    // TODO
-    
-    // Vérifier si l'utilisateur existe
-    if !user::exists(email).unwrap_or(false) {
+        //TODO
+    // Validate email first
+    let validated_email = EmailInput::new(email)
+        .ok_or((StatusCode::BAD_REQUEST, "Email is Invalid!"))?;
+
+    // Check if user exists
+    if !user::exists(&validated_email.email).unwrap_or(false) {
         return Err(ErrorResponse::from("User not found"));
     }
 
-    // Débuter l'authentification
-    let (public_key, auth_state) = begin_authentication(email)
+    // Begin authentication using the validated email
+    let (public_key, auth_state) = begin_authentication(&validated_email.email)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
     let state_id = uuid::Uuid::new_v4().to_string();
 
-    // Stocker l'état d'authentification
+    // Store authentication state with email
     let mut states = AUTHENTICATION_STATES.write().await;
     states.insert(state_id.clone(), TimedStoredState {
         state: auth_state,
         server_challenge: public_key["challenge"].as_str().unwrap().to_string(),
     });
 
+    // Return both the public key and state ID
     Ok(Json(json!({
         "publicKey": public_key,
         "state_id": state_id,
@@ -169,33 +205,54 @@ pub async fn login_begin(Json(payload): Json<serde_json::Value>) -> axum::respon
 }
 
 /// Fin du processus d'authentification WebAuthn
-pub async fn login_complete(Json(payload): Json<serde_json::Value>) -> axum::response::Result<Redirect> {
-    let response = payload.get("response").ok_or_else(|| (StatusCode::BAD_REQUEST, "Response is required"))?;
-    let state_id = payload.get("state_id").and_then(|v| v.as_str()).ok_or_else(|| (StatusCode::BAD_REQUEST, "State ID is required"))?;
+pub async fn login_complete(
+    session: Session,
+    Json(payload): Json<serde_json::Value>) -> axum::response::Result<Redirect> {
+    let email = payload
+        .get("email")
+        .and_then(|v| v.as_str())
+        .ok_or((StatusCode::BAD_REQUEST, "Email is required"))?;
+    
+    let response = payload
+        .get("response")
+        .ok_or_else(|| (StatusCode::BAD_REQUEST, "Response is required"))?;
+        
+    let state_id = payload
+        .get("state_id")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| (StatusCode::BAD_REQUEST, "State ID is required"))?;
 
-    // TODO
-    // Récupérer l'état d'authentification
+    // Get stored state
     let mut states = AUTHENTICATION_STATES.write().await;
-    let stored_state = states.remove(state_id)
+    let stored_state = states
+        .remove(state_id)
         .ok_or((StatusCode::BAD_REQUEST, "Invalid state"))?;
 
-    // Convertir la réponse
+    // Convert the response
     let credential: PublicKeyCredential = serde_json::from_value(response.clone())
         .map_err(|_| (StatusCode::BAD_REQUEST, "Invalid response format"))?;
 
-    // Compléter l'authentification
+    // Complete authentication
     complete_authentication(&credential, &stored_state.state, &stored_state.server_challenge)
         .await
         .map_err(|e| (StatusCode::UNAUTHORIZED, e.to_string()))?;
 
-    // TODO: Créer une session pour l'utilisateur authentifié
-    // session.insert("email", email).await?;
+    // Create session
+    // TODO: Implement proper session management
+    //session.insert("email", email).await?;
+    session
+        .insert("isAuthenticated", true)
+        .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Failed to set session"))?;
+
 
     Ok(Redirect::to("/home"))
 }
 
 /// Gère la déconnexion de l'utilisateur
-pub async fn logout() -> impl IntoResponse {
+pub async fn logout(
+    session: Session,
+) -> impl IntoResponse {
+    session.delete();
     Redirect::to("/")
 }
 
