@@ -109,7 +109,7 @@
             });
 
             if (completeResponse.ok) {
-                document.getElementById('registration_status').textContent = "Registration successful! You can now log in.";
+                document.getElementById('registration_status').textContent = "Registration successful! Check your email to verify your account.";
                 document.getElementById('registration_status').classList.add("alert", "alert-success");
             } else {
                 throw new Error(await completeResponse.text());

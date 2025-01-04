@@ -1,12 +1,17 @@
-next_pk: 2
+next_pk: 3
 emails:
-  1:
-    pk: 1
-    to: svenHeinerrrr@dickeSchwanz.de
-    subject: Account Validation
-    body: 'Welcome! Please click the following link to validate your account: http://localhost:3000/validate/c2130464-271e-48f7-8902-7eca02be1a75'
   0:
     pk: 0
-    to: abc@gmail.com
+    to: kchalfouh@hotmail.com
+    subject: Account Validation
+    body: 'Click here to validate your account: http://localhost:8080/validate/3d2f9a86-6267-4e90-82af-0081584c33aa'
+  2:
+    pk: 2
+    to: kchalfouh@hotmail.com
+    subject: Account Validation
+    body: 'Click here to validate your account: http://localhost:8080/validate/affc382a-2c30-4ae8-8e18-72192f1944cd'
+  1:
+    pk: 1
+    to: kchalfouh@hotmail.com
     subject: Account Recovery
-    body: 'Click here to recover your account: http://localhost:3000/reset/57e4a343-21bf-4939-9b20-224ea9cb54f5'
+    body: 'Click here to recover your account: http://localhost:8080/recover/8626c0dd-5f44-4660-b283-ac7e39250dad'

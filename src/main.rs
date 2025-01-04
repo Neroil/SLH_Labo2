@@ -40,9 +40,16 @@ async fn main() {
         eprintln!("Erreur lors du chargement des posts: {}", e);
     }
 
-    // Charger les autres bases de données
-    database::user::load().ok();
-    database::email::load().ok();
+    // Charger les autres bases de données avec gestion d'erreur
+    match database::user::load() {
+        Ok(_) => info!("Base de données utilisateurs chargée avec succès"),
+        Err(e) => eprintln!("Erreur lors du chargement de la base utilisateurs: {}", e),
+    }
+
+    match database::email::load() {
+        Ok(_) => info!("Base de données emails chargée avec succès"),
+        Err(e) => eprintln!("Erreur lors du chargement de la base emails: {}", e),
+    }
 
     // Configurer Handlebars comme extension pour le routeur
     let hbs = Arc::new(HBS.clone());

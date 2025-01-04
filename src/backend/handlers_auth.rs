@@ -18,6 +18,7 @@ use std::{
     path::Path,
     sync::{Arc, RwLock},
 };
+use image::ImageFormat;
 use uuid::Uuid;
 use crate::consts;
 
@@ -65,8 +66,27 @@ pub async fn create_post(mut multipart: Multipart) -> axum::response::Result<Jso
 
             text_content = Some(text);
         } else if field_name == "file" {
+            
+            //Valider le content-type
+            let content_type = field.content_type()
+                .ok_or((StatusCode::BAD_REQUEST, "Content-Type required"))?;
+            if !consts::ALLOWED_MIME_TYPES.contains(&content_type) {
+                return Err((StatusCode::BAD_REQUEST, "Invalid file type - only JPEG allowed").into());
+            }
+            
             let filename = field.file_name().unwrap_or_default().to_string();
             let file_bytes = field.bytes().await?;
+            
+            //Valider la taille du fichier
+            if file_bytes.len() > consts::MAX_FILE_SIZE as usize {
+                return Err((StatusCode::BAD_REQUEST, "File too large - max 5MB").into());
+            }
+
+            //Valider l'image en utilisant crate
+            let format = image::guess_format(&file_bytes).map_err(|_| (StatusCode::BAD_REQUEST, "Invalid image format"))?;
+            if format != ImageFormat::Jpeg {
+                return Err((StatusCode::BAD_REQUEST, "Invalid format - JPEG required").into());
+            }
 
             let uploads_dir = consts::UPLOADS_DIR;
             if !Path::new(uploads_dir).exists() {

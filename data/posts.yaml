@@ -1,16 +1,12 @@
-- id: c3765ca9-8fce-4f2e-be76-f7c626aec5a2
-  content: salut
+- id: 7e2a7e47-c5fa-4df3-ab9d-0fbecc66b4bd
+  content: Coucou!
   image_path: null
   likes: 0
-- id: 682753fb-5392-44d6-8505-b6a1d3089f01
-  content: merde putain
-  image_path: ./data/uploads/output.pdf
+- id: 0b4c9373-e2cd-4085-b61f-0eb8d2427380
+  content: omg
+  image_path: ./data/uploads/61jmXB7Z7iS.jpg
   likes: 0
-- id: 5bc31e97-af70-4a13-9b44-3313c0f903ad
-  content: omggg
-  image_path: null
-  likes: 0
-- id: f28a4eaa-3e17-4403-89bc-f87c9d69459d
-  content: merde
-  image_path: null
+- id: 9b75fc40-1488-4b87-a5d4-ffcebea8851a
+  content: w
+  image_path: ./data/uploads/fotor-ai-20240928185645.jpg
   likes: 0

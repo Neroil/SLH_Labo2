@@ -8,7 +8,7 @@ use webauthn_rs::prelude::*;
 use once_cell::sync::Lazy;
 use url::Url;
 use tokio::sync::RwLock;
-
+use crate::database::user;
 
 // Initialisation globale de WebAuthn
 static WEBAUTHN: Lazy<Webauthn> = Lazy::new(|| {
@@ -70,15 +70,14 @@ pub async fn complete_registration(
     response: &RegisterPublicKeyCredential,
     stored_state: &StoredRegistrationState,
 ) -> Result<()> {
-
-    // TODO
     let passkey = WEBAUTHN.finish_passkey_registration(
         response,
         &stored_state.registration_state,
     ).context("Failed to finish registration")?;
 
+    // Store in the credential store (if you still want to)
     let mut store = CREDENTIAL_STORE.write().await;
-    store.insert(user_email.to_string(), passkey);
+    store.insert(user_email.to_string(), passkey.clone());
 
     Ok(())
 }
@@ -86,13 +85,16 @@ pub async fn complete_registration(
 /// Démarrer l'authentification WebAuthn
 pub async fn begin_authentication(user_email: &str) -> Result<(serde_json::Value, PasskeyAuthentication)> {
 
-    let store = CREDENTIAL_STORE.read().await;
-    let passkey = store.get(user_email).context("User not found")?;
+    let user_data = user::get(user_email)
+        .ok_or_else(|| anyhow::anyhow!("User not found"))?;
+
+    let passkey = user_data.passkey
+        .ok_or_else(|| anyhow::anyhow!("User has no passkey registered"))?;
 
 
     // TODO
     let (rcr,passkey_auth) = WEBAUTHN.start_passkey_authentication(
-        std::slice::from_ref(passkey)
+        std::slice::from_ref(&passkey)
     ).context("Failed to start authentication")?;
 
     let public_key = rcr.public_key;
@@ -122,6 +124,8 @@ pub async fn complete_authentication(
         .context("Failed to parse client_data_json")?;
 
     // TODO
+    // Log client data for debugging
+    println!("Client Data: {:?}", client_data);
 
     // Vérification du challenge
     let challenge = client_data.get("challenge")
