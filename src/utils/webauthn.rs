@@ -123,10 +123,6 @@ pub async fn complete_authentication(
     let client_data: serde_json::Value = serde_json::from_str(&client_data_json)
         .context("Failed to parse client_data_json")?;
 
-    // TODO
-    // Log client data for debugging
-    println!("Client Data: {:?}", client_data);
-
     // Vérification du challenge
     let challenge = client_data.get("challenge")
         .and_then(|c| c.as_str())
