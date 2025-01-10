@@ -39,8 +39,8 @@ fn validate_name(username: &str) -> Result<(), ValidationError> {
 }
 
 pub(crate) fn validate_description(description: &str) -> Result<(), ValidationError> {
-    // Vérifier les caractères spéciaux dangereux
-    if description.contains(['<', '>', '&', '"', '\'']) {
+    let re = Regex::new(r"^[\p{L}\p{N}\p{P}\p{Z}]+$").unwrap();
+    if !re.is_match(description) {
         return Err(ValidationError::new("description_contains_invalid_chars"));
     }
     Ok(())
