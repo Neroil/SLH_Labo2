@@ -9,7 +9,7 @@ use axum::{
 };
 
 use crate::database::{token, user};
-use crate::email::{self, send_mail};
+use crate::email::{send_mail};
 use crate::utils::webauthn::{
     begin_authentication, begin_registration, complete_authentication, complete_registration,
     StoredRegistrationState, CREDENTIAL_STORE,
@@ -19,33 +19,12 @@ use once_cell::sync::Lazy;
 use serde_json::json;
 use std::collections::HashMap;
 use tokio::sync::RwLock;
-use tower::ServiceExt;
 use tower_sessions::Session;
-use validator::{Validate, ValidateEmail};
+use validator::{Validate};
 use webauthn_rs::prelude::{
     PasskeyAuthentication, PublicKeyCredential, RegisterPublicKeyCredential,
 };
 use crate::utils::input::{MailValidation, UserRegistration};
-//Validation des emails
-
-#[derive(Debug, Validate)]
-struct EmailInput {
-    #[validate(email)]
-    email: String,
-}
-
-impl EmailInput {
-    pub fn new(email: &str) -> Option<Self> {
-        let instance = EmailInput {
-            email: email.to_string(),
-        };
-        if instance.validate().is_ok() {
-            Some(instance)
-        } else {
-            None
-        }
-    }
-}
 
 /// Structure pour gérer un état temporaire avec un challenge
 struct TimedStoredState<T> {

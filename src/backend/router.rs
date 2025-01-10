@@ -3,11 +3,10 @@
 
 use axum::{Router, routing::{get, post}, BoxError};
 use axum::error_handling::HandleErrorLayer;
-use axum::routing::get_service;
 use http::StatusCode;
 use tower_sessions::{SessionManagerLayer, MemoryStore};
 use tower_http::cors::{Any, CorsLayer};
-use tower::{service_fn, ServiceBuilder};
+use tower::{ServiceBuilder};
 use tower_http::services::{ServeDir};
 
 use crate::backend::handlers_unauth::{

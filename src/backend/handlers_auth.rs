@@ -23,7 +23,7 @@ use image::ImageFormat;
 use uuid::Uuid;
 use validator::Validate;
 use crate::consts;
-use crate::utils::input::{validate_description, PostValidation};
+use crate::utils::input::{PostValidation};
 
 /// Modèle représentant un post avec des likes
 #[derive(Clone, Serialize, Deserialize, Debug)]
