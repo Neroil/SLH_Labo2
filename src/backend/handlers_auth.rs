@@ -18,9 +18,12 @@ use std::{
     path::Path,
     sync::{Arc, RwLock},
 };
+use axum::response::ErrorResponse;
 use image::ImageFormat;
 use uuid::Uuid;
+use validator::Validate;
 use crate::consts;
+use crate::utils::input::{validate_description, PostValidation};
 
 /// Modèle représentant un post avec des likes
 #[derive(Clone, Serialize, Deserialize, Debug)]
@@ -63,8 +66,18 @@ pub async fn create_post(mut multipart: Multipart) -> axum::response::Result<Jso
 
         if field_name == "text" {
             let text = field.text().await.unwrap_or_default();
-
+            
+            let valid_text = PostValidation{
+                content: text.to_string(),
+            };
+            
+            valid_text.validate().map_err(|e| {
+                ErrorResponse::from((StatusCode::BAD_REQUEST, Json(json!({"error": e.errors()})))
+                )
+            })?;
+            
             text_content = Some(text);
+            
         } else if field_name == "file" {
             
             //Valider le content-type
@@ -105,6 +118,16 @@ pub async fn create_post(mut multipart: Multipart) -> axum::response::Result<Jso
     }
 
     let text = text_content.ok_or((StatusCode::BAD_REQUEST, "Text content is required"))?;
+
+    let valid_text = PostValidation{
+        content: text.to_string(),
+    };
+
+    valid_text.validate().map_err(|e| {
+        ErrorResponse::from((StatusCode::BAD_REQUEST, Json(json!({"error": e.errors()})))
+        )
+    })?;
+    
     let image_path = uploaded_file_path;
 
     let post_id = save_post(&text, image_path.as_deref());

@@ -21,11 +21,11 @@ use std::collections::HashMap;
 use tokio::sync::RwLock;
 use tower::ServiceExt;
 use tower_sessions::Session;
-use validator::Validate;
+use validator::{Validate, ValidateEmail};
 use webauthn_rs::prelude::{
     PasskeyAuthentication, PublicKeyCredential, RegisterPublicKeyCredential,
 };
-
+use crate::utils::input::{MailValidation, UserRegistration};
 //Validation des emails
 
 #[derive(Debug, Validate)]
@@ -68,19 +68,26 @@ pub async fn register_begin(
         .get("email")
         .and_then(|v| v.as_str())
         .ok_or((StatusCode::BAD_REQUEST, "Email is required"))?;
+    
+    // Valider les champs 
+    let validation_email = MailValidation {
+        email: email.to_string(),
+    };
 
+    validation_email.validate().map_err(|e| {
+        ErrorResponse::from((StatusCode::BAD_REQUEST, Json(json!({"error": e.errors()})))
+        )
+    })?;
+    
     let reset_mode = payload
         .get("reset_mode")
         .and_then(|v| v.as_bool())
         .unwrap_or(false);
 
-    //Validation de l'email
-    let validated_email =
-        EmailInput::new(email).ok_or((StatusCode::BAD_REQUEST, "Email is Invalid !"))?;
     
     // Vérifier si l'utilisateur existe déjà (sauf en mode reset)
     if !reset_mode {
-        if user::exists(&validated_email.email).unwrap_or(false) {
+        if user::exists(email).unwrap_or(false) {
             return Err(ErrorResponse::from((StatusCode::BAD_REQUEST, Json(json!({"error": "There was a problem with your registration"})))));
         }
     }
@@ -113,14 +120,11 @@ pub async fn register_begin(
 pub async fn register_complete(
     Json(payload): Json<serde_json::Value>,
 ) -> axum::response::Result<StatusCode> {
-    // Extraire et valider l'email
+    // Extraire l'email
     let email = payload
         .get("email")
         .and_then(|v| v.as_str())
         .ok_or((StatusCode::BAD_REQUEST, "Email is required"))?;
-
-    let validated_email =
-        EmailInput::new(email).ok_or((StatusCode::BAD_REQUEST, "Email is Invalid!"))?;
 
     // Extraire les autres champs requis
     let first_name = payload
@@ -132,6 +136,18 @@ pub async fn register_complete(
         .get("last_name")
         .and_then(|v| v.as_str())
         .ok_or((StatusCode::BAD_REQUEST, "Last name is required"))?;
+    
+    // Valider les champs 
+    let user_registration = UserRegistration {
+        first_name: first_name.to_string(),
+        last_name: last_name.to_string(),
+        email: email.to_string(),
+    };
+    
+    user_registration.validate().map_err(|e| {
+        ErrorResponse::from((StatusCode::BAD_REQUEST, Json(json!({"error": e.errors()})))
+        )
+    })?;
 
     // Récupérer l'état d'enregistrement
     let state_id = payload
@@ -159,7 +175,7 @@ pub async fn register_complete(
     })?;
 
     // Compléter l'enregistrement WebAuthn
-    complete_registration(&validated_email.email, &response, &stored_state)
+    complete_registration(email, &response, &stored_state)
         .await
         .map_err(|err| {
             (
@@ -198,8 +214,8 @@ pub async fn register_complete(
     
 
     // Envoyer l'email de validation
-    send_mail(email, "Account Validation", 
-        &format!(
+    send_mail(email, "Account Validation",
+              &format!(
             "Click here to validate your account: http://{}:{}/validate/{}",
             consts::DOMAIN, consts::HTTP_PORT, validation_token
         ),
@@ -223,22 +239,28 @@ pub async fn login_begin(
         .and_then(|v| v.as_str())
         .ok_or((StatusCode::BAD_REQUEST, "Email is required"))?;
 
-    // Valider l'email
-    let validated_email =
-        EmailInput::new(email).ok_or((StatusCode::BAD_REQUEST, "Email is Invalid!"))?;
+    // Valider les champs 
+    let validation_email = MailValidation {
+        email: email.to_string(),
+    };
+
+    validation_email.validate().map_err(|e| {
+        ErrorResponse::from((StatusCode::BAD_REQUEST, Json(json!({"error": e.errors()})))
+        )
+    })?;
 
     // Check si l'utilisateur existe
-    if !user::exists(&validated_email.email).unwrap_or(false) {
+    if !user::exists(email).unwrap_or(false) {
         return Err((StatusCode::BAD_REQUEST, "User not found").into());
     }
 
     // Check si l'utilisateur est vérifié
-    if !user::get(&validated_email.email).unwrap().verified {
+    if !user::get(email).unwrap().verified {
         return Err((StatusCode::BAD_REQUEST, "User not verified").into());
     }
 
     // Commencer l'authentification
-    let (public_key, auth_state) = begin_authentication(&validated_email.email)
+    let (public_key, auth_state) = begin_authentication(email)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
@@ -329,6 +351,16 @@ pub async fn recover_account(
         .get("email")
         .and_then(|v| v.as_str())
         .ok_or((StatusCode::BAD_REQUEST, "Email is required"))?;
+
+    // Valider les champs 
+    let validation_email = MailValidation {
+        email: email.to_string(),
+    };
+
+    validation_email.validate().map_err(|e| {
+        ErrorResponse::from((StatusCode::BAD_REQUEST, Json(json!({"error": e.errors()})))
+        )
+    })?;
 
     // Vérifier si l'utilisateur existe
     if !user::exists(email).unwrap_or(false) {
