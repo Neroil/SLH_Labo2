@@ -74,11 +74,10 @@ pub async fn register_begin(
         .and_then(|v| v.as_bool())
         .unwrap_or(false);
 
-    //Validate the email
+    //Validation de l'email
     let validated_email =
         EmailInput::new(email).ok_or((StatusCode::BAD_REQUEST, "Email is Invalid !"))?;
-
-    // TODO
+    
     // Vérifier si l'utilisateur existe déjà (sauf en mode reset)
     if !reset_mode {
         if user::exists(&validated_email.email).unwrap_or(false) {
@@ -86,15 +85,15 @@ pub async fn register_begin(
         }
     }
 
-    //Begin registration
+    //Début de l'enregistrement
     let (public_key, reg_state) = begin_registration(email, email)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
-    //Unique ID for this registration
+    //Création de l'ID d'état
     let state_id = uuid::Uuid::new_v4().to_string();
 
-    //Write to the DB
+    //Stockage de l'état d'enregistrement dans la DB
     let mut states = REGISTRATION_STATES.write().await;
     states.insert(
         state_id.clone(),
@@ -224,29 +223,28 @@ pub async fn login_begin(
         .and_then(|v| v.as_str())
         .ok_or((StatusCode::BAD_REQUEST, "Email is required"))?;
 
-    //TODO
-    // Validate email first
+    // Valider l'email
     let validated_email =
         EmailInput::new(email).ok_or((StatusCode::BAD_REQUEST, "Email is Invalid!"))?;
 
-    // Check if user exists
+    // Check si l'utilisateur existe
     if !user::exists(&validated_email.email).unwrap_or(false) {
         return Err((StatusCode::BAD_REQUEST, "User not found").into());
     }
 
-    // Check if user is verified
+    // Check si l'utilisateur est vérifié
     if !user::get(&validated_email.email).unwrap().verified {
         return Err((StatusCode::BAD_REQUEST, "User not verified").into());
     }
 
-    // Begin authentication using the validated email
+    // Commencer l'authentification
     let (public_key, auth_state) = begin_authentication(&validated_email.email)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
     let state_id = uuid::Uuid::new_v4().to_string();
 
-    // Store authentication state with email
+    // Garder l'état d'authentification
     let mut states = AUTHENTICATION_STATES.write().await;
     states.insert(
         state_id.clone(),
@@ -255,8 +253,7 @@ pub async fn login_begin(
             server_challenge: public_key["challenge"].as_str().unwrap().to_string(),
         },
     );
-
-    // Return both the public key and state ID
+    
     Ok(Json(json!({
         "publicKey": public_key,
         "state_id": state_id,
@@ -278,17 +275,17 @@ pub async fn login_complete(
         .and_then(|v| v.as_str())
         .ok_or_else(|| (StatusCode::BAD_REQUEST, "State ID is required"))?;
 
-    // Get stored state
+    // Récupérer l'état d'authentification
     let mut states = AUTHENTICATION_STATES.write().await;
     let stored_state = states
         .remove(state_id)
         .ok_or((StatusCode::BAD_REQUEST, "Invalid state"))?;
-
-    // Convert the response
+    
+    
     let credential: PublicKeyCredential = serde_json::from_value(response.clone())
         .map_err(|_| (StatusCode::BAD_REQUEST, "Invalid response format"))?;
 
-    // Complete authentication
+    // Complète l'authentification
     complete_authentication(
         &credential,
         &stored_state.state,
@@ -297,9 +294,7 @@ pub async fn login_complete(
     .await
     .map_err(|e| (StatusCode::UNAUTHORIZED, e.to_string()))?;
 
-    // Create session
-    // TODO: Implement proper session management
-    //session.insert("email", email).await?;
+    // Créer la session utilisateur
     session
         .insert("isAuthenticated", true)
         .map_err(|_| (StatusCode::INTERNAL_SERVER_ERROR, "Failed to set session"))?;
@@ -329,9 +324,7 @@ pub async fn recover_account(
     Json(payload): Json<serde_json::Value>,
 ) -> axum::response::Result<Html<String>> {
     let mut data = HashMap::new();
-
-    //TODO FIX THIS OMG
-    // TODO : Utilisez la fonction send_email
+    
     let email = payload
         .get("email")
         .and_then(|v| v.as_str())

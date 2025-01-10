@@ -75,7 +75,7 @@ pub async fn complete_registration(
         &stored_state.registration_state,
     ).context("Failed to finish registration")?;
 
-    // Store in the credential store (if you still want to)
+    // Stocker la passkey
     let mut store = CREDENTIAL_STORE.write().await;
     store.insert(user_email.to_string(), passkey.clone());
 
@@ -90,9 +90,8 @@ pub async fn begin_authentication(user_email: &str) -> Result<(serde_json::Value
 
     let passkey = user_data.passkey
         .ok_or_else(|| anyhow::anyhow!("User has no passkey registered"))?;
-
-
-    // TODO
+    
+    // Démarrer l'authentification
     let (rcr,passkey_auth) = WEBAUTHN.start_passkey_authentication(
         std::slice::from_ref(&passkey)
     ).context("Failed to start authentication")?;
@@ -131,8 +130,7 @@ pub async fn complete_authentication(
     if challenge != server_challenge {
         return Err(anyhow::anyhow!("Invalid challenge"));
     }
-
-
+    
     WEBAUTHN.finish_passkey_authentication(
         response,
         state
